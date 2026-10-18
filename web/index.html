@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>NyayAI — legal information, minus the jargon</title>
+    <style>
+      :root { color-scheme: light; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; min-height: 100vh; background: #f4f3ee; color: #191a1c;
+        font-family: system-ui, sans-serif; display: grid; place-items: center;
+      }
+      main { width: min(680px, 92vw); padding: 2rem 0; }
+      h1 { font-size: 1.4rem; margin: 0 0 .2rem; }
+      .note { color: #70706b; font-size: .82rem; margin-bottom: 1.4rem; }
+      .row { display: flex; gap: .5rem; }
+      textarea {
+        flex: 1; resize: none; height: 3.2rem; padding: .8rem; border: 1px solid #e4e2d9;
+        border-radius: .8rem; font: inherit; background: #fbfaf7; outline: none;
+      }
+      textarea:focus { border-color: #e4572e; }
+      button {
+        border: 1px solid #191a1c; background: #191a1c; color: #f4f3ee; border-radius: .8rem;
+        padding: 0 1.1rem; cursor: pointer; font: inherit; font-size: .85rem;
+      }
+      button:disabled { opacity: .4; cursor: default; }
+      .answer {
+        margin-top: 1.2rem; background: #fbfaf7; border: 1px solid #e4e2d9; border-radius: .8rem;
+        padding: 1rem; white-space: pre-wrap; line-height: 1.55; min-height: 3rem;
+      }
+      .cites { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .8rem; }
+      .cite { font-size: .72rem; border: 1px solid #e4e2d9; background: #fff; border-radius: 99px; padding: .2rem .6rem; color: #0f766e; }
+      .muted { color: #70706b; font-size: .8rem; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>NyayAI</h1>
+      <p class="note">Legal information with citations — <b>not legal advice</b>.</p>
+
+      <div class="row">
+        <button id="mic" title="Speak your question">🎤</button>
+        <textarea id="q" placeholder="e.g. What does Article 21 protect?"></textarea>
+        <button id="ask">Ask</button>
+      </div>
+
+      <div class="answer" id="answer"><span class="muted">Answers will appear here — every claim cites its source.</span></div>
+      <div class="cites" id="cites"></div>
+      <p class="muted" style="margin-top:.8rem">
+        <button id="speak" disabled style="padding:.3rem .7rem">🔊 Read aloud</button>
+      </p>
+    </main>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (SR) {
+        const rec = new SR();
+        rec.lang = "en-IN";
+        rec.onresult = (e) => { $("q").value = e.results[0][0].transcript; };
+        $("mic").onclick = () => rec.start();
+      } else {
+        $("mic").disabled = true;
+        $("mic").title = "Speech recognition not available in this browser";
+      }
+
+      $("ask").onclick = async () => {
+        const question = $("q").value.trim();
+        if (!question) return;
+        $("ask").disabled = true;
+        $("answer").textContent = "Thinking…";
+        try {
+          const r = await fetch("/ask", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ question }),
+          });
+          const data = await r.json();
+          if (!r.ok) {
+            $("answer").textContent = data.detail || "Request failed.";
+            return;
+          }
+          $("answer").textContent = data.answer;
+          $("cites").innerHTML = "";
+          for (const [id, c] of Object.entries(data.citations || {})) {
+            const chip = document.createElement("span");
+            chip.className = "cite";
+            chip.textContent = `${id} · ${c.citation} — ${c.source}`;
+            $("cites").appendChild(chip);
+          }
+          $("speak").disabled = false;
+          $("speak").onclick = () => {
+            speechSynthesis.cancel();
+            speechSynthesis.speak(new SpeechSynthesisUtterance(data.answer));
+          };
+        } catch (err) {
+          $("answer").textContent = "Network error: " + err;
+        } finally {
+          $("ask").disabled = false;
+        }
+      };
+    </script>
+  </body>
+</html>
